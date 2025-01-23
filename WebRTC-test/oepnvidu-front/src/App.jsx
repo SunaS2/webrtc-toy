@@ -348,18 +348,18 @@ function App() {
                     )}
                     
                     {/* 상대방 비디오 */}
-                    {subscribers.length > 0 && subscribers[0] && (
-                        <div className="stream-container col-md-6">
+                    {subscribers.map((subscriber, i) => (
+                        <div className="stream-container col-md-6" key={i}>
                             <div className="streamComponent">
                                 <div className="participant-name">
                                     <span>
-                                        {JSON.parse(subscribers[0].stream.connection.data).clientData}
+                                        {JSON.parse(subscriber.stream.connection.data).clientData}
                                     </span>
                                 </div>
-                                <UserVideoComponent streamManager={subscribers[0]} />
+                                <UserVideoComponent streamManager={subscriber} />
                             </div>
                         </div>
-                    )}
+                    ))}
                 </div>
             </div>
         )}
