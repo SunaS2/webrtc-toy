@@ -49,22 +49,71 @@
     position: relative;
 }
 
+.main-video-container {
+    width: 100%;
+    height: 400px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #000;
+}
+
+.small-video-container {
+    width: 100%;
+    height: 200px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #000;
+}
+
+.talker-video-container {
+    width: 100%;
+    height: 400px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #000;
+    position: relative;
+}
+
+.watcher-video-container {
+    width: 100%;
+    height: 200px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #000;
+    position: relative;
+}
+
 .participant-name {
     position: absolute;
     z-index: 1;
-    bottom: 10px;
-    left: 10px;
     background: rgba(0, 0, 0, 0.5);
     padding: 5px 10px;
     color: white;
-    border-radius: 5px;
-    font-size: 14px;
+    border-radius: 4px;
+    top: 10px;
+    left: 10px;
 }
 
 #video-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 20px;
     padding: 20px;
+}
+
+/* Talker 모드일 때의 스타일 */
+.talker-mode .video-container {
+    height: 400px;
+}
+
+/* 반응형 레이아웃 */
+@media (max-width: 768px) {
+    .talker-video-container {
+        height: 300px;
+    }
+    
+    .watcher-video-container {
+        height: 150px;
+    }
 }

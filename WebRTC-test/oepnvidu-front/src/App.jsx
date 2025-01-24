@@ -22,6 +22,7 @@ function App() {
   const [publisher, setPublisher] = useState(undefined);
   const [subscribers, setSubscribers] = useState([]);
   const [currentVideoDevice, setCurrentVideoDevice] = useState(null);
+  const [participantMode, setParticipantMode] = useState(''); // 참가자 모드 상태 추가
 
   const OV = useRef(null); // useRef를 사용하여 변수에 대한 참조를 저장, 컴포넌트가 리렌더링되어도 변수에 대한 참조가 유지(값을 유지지)
 
@@ -44,64 +45,43 @@ function App() {
     if (event) {
         event.preventDefault();
     }
+    
+    const mode = event.target.value === 'JOIN to Talker' ? 'talker' : 'watcher';
+    setParticipantMode(mode);
 
     OV.current = new OpenVidu();
     const mySession = OV.current.initSession();
-    setSession(mySession);
 
-    // 스트림 생성 이벤트 핸들러
-    mySession.on('streamCreated', async (event) => {
-        try {
-            const subscriber = mySession.subscribe(event.stream, undefined);
-            subscriber.on('streamPlaying', (e) => {
-                console.log('Stream playing:', e);
-            });
-            
-            setSubscribers((prevSubscribers) => [...prevSubscribers, subscriber]);
-        } catch (error) {
-            console.error('스트림 구독 오류:', error);
-        }
+    // 세션 이벤트 핸들러 설정
+    mySession.on('streamCreated', (event) => {
+        const subscriber = mySession.subscribe(event.stream, undefined);
+        setSubscribers((subscribers) => [...subscribers, subscriber]);
     });
 
-    // 스트림 제거 이벤트 핸들러
     mySession.on('streamDestroyed', (event) => {
-        const stream = event.stream;
-        if (stream) {
-            deleteSubscriber(stream.streamManager);
-        }
-    });
-
-    // 참가자 퇴장 이벤트 핸들러
-    mySession.on('participantLeft', (event) => {
-        console.log('참가자 퇴장:', event.connectionId);
-        setSubscribers((prevSubscribers) => 
-            prevSubscribers.filter(sub => 
-                sub.stream.connection.connectionId !== event.connectionId
-            )
+        setSubscribers((subscribers) => 
+            subscribers.filter((sub) => sub !== event.stream.streamManager)
         );
     });
 
-    // 세션 연결 해제 이벤트 핸들러
-    mySession.on('sessionDisconnected', (event) => {
-        console.log('세션 연결 해제:', event.reason);
-        if (event.reason !== 'disconnect') {
-            leaveSession();
-        }
+    mySession.on('exception', (exception) => {
+        console.warn('세션 예외 발생:', exception);
     });
 
-    // 예외 처리 핸들러
-    mySession.on('exception', (exception) => {
-      console.warn(exception);
-    });
+    setSession(mySession);
 
     try {
         const token = await getToken();
-        await mySession.connect(token, { clientData: myUserName });
+        const userData = mode === 'talker' ? 
+            `${myUserName}-Talker` : 
+            `${myUserName}-Watcher`;
+            
+        await mySession.connect(token, { clientData: userData });
 
         const publisher = await OV.current.initPublisherAsync(undefined, {
-            audioSource: undefined,
+            audioSource: mode === 'talker' ? undefined : false,
             videoSource: undefined,
-            publishAudio: true,
+            publishAudio: mode === 'talker',
             publishVideo: true,
             resolution: '640x480',
             frameRate: 30,
@@ -109,8 +89,12 @@ function App() {
             mirror: false
         });
 
-        publisher.on('streamPlaying', (e) => {
-            console.log('Publisher stream playing:', e);
+        publisher.on('streamCreated', (event) => {
+            console.log('Publisher stream created:', event);
+        });
+
+        publisher.on('streamPlaying', () => {
+            console.log('Publisher stream playing');
         });
 
         await mySession.publish(publisher);
@@ -123,63 +107,36 @@ function App() {
         setCurrentVideoDevice(currentVideoDevice);
         setMainStreamManager(publisher);
         setPublisher(publisher);
+
     } catch (error) {
         console.error('세션 연결 중 오류 발생:', error);
     }
-}, [myUserName]); //Hook 의존성 배열 - myUserName이 변경될 때만 함수 재생성
+}, [myUserName]);
 
-  // subscriber 삭제 함수 수정
-  const deleteSubscriber = useCallback((streamManager) => {
-    if (!streamManager) return;
-    
-    setSubscribers((prevSubscribers) => {
-        return prevSubscribers.filter(sub => 
-            sub.stream.streamId !== (streamManager.stream?.streamId || streamManager)
-        );
-    });
-  }, []);
-
-  //세션 연결 해제
-  const leaveSession = useCallback(async () => { 
-    try {
-        // 세션이 존재하고 연결된 상태인지 확인
-        if (session && session.connection) {
-            // 먼저 스트림 발행 중지
-            if (publisher) {
-                await session.unpublish(publisher);
-                publisher.stream.disposeWebRtcPeer();
-                publisher.stream.disposeMediaStream();
-            }
-            
-            // subscribers 정리
-            for (const subscriber of subscribers) {
-                if (subscriber.stream) {
-                    await session.unsubscribe(subscriber);
-                    subscriber.stream.disposeWebRtcPeer();
-                    subscriber.stream.disposeMediaStream();
-                }
-            }
-
-            // 세션 연결 해제
-            await session.disconnect();
-        }
-
-        // OpenVidu 객체 정리
-        if (OV.current) {
-            OV.current = null;
-        }
-
-        // 모든 상태 초기화
-        setSession(undefined);
-        setSubscribers([]);
-        setMySessionId('SessionA');
-        setMyUserName(`Participant${Math.floor(Math.random() * 100)}`);
-        setMainStreamManager(undefined);
-        setPublisher(undefined);
-    } catch (error) {
-        console.log('세션 종료 중 오류 발생:', error);
+  // 세션 나가기 함수 수정
+  const leaveSession = useCallback(() => {
+    if (session) {
+        session.disconnect();
     }
-}, [session, publisher, subscribers]);
+
+    // 상태 초기화
+    OV.current = null;
+    setSession(undefined);
+    setSubscribers([]);
+    setMySessionId('SessionA');
+    setMyUserName(`Participant${Math.floor(Math.random() * 100)}`);
+    setMainStreamManager(undefined);
+    setPublisher(undefined);
+}, [session]);
+
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+        if (session) {
+            session.disconnect();
+        }
+    };
+  }, [session]);
 
   const switchCamera = useCallback(async () => {
     try {
@@ -269,19 +226,25 @@ function App() {
     }
   }, [mainStreamManager]);
 
+  // 구독자 타입 확인 함수 수정
+  const getSubscriberType = (subscriber) => {
+    try {
+        const data = JSON.parse(subscriber.stream.connection.data);
+        // 정확한 문자열 비교를 위해 수정
+        return data.clientData.toLowerCase().includes('talker') ? 'talker' : 'watcher';
+    } catch (error) {
+        console.error('구독자 정보 파싱 오류:', error);
+        return 'watcher';
+    }
+  };
+
   return (
     <div className="container">
         {session === undefined ? (
             <div id="join">
-                <div id="img-div">
-                    <img 
-                        src="resources/images/openvidu_grey_bg_transp_cropped.png" 
-                        alt="OpenVidu logo" 
-                    />
-                </div>
                 <div id="join-dialog" className="jumbotron vertical-center">
                     <h1>Join a video session</h1>
-                    <form className="form-group" onSubmit={joinSession}>
+                    <form className="form-group">
                         <p>
                             <label>Participant: </label>
                             <input
@@ -307,8 +270,16 @@ function App() {
                         <p className="text-center">
                             <input 
                                 className="btn btn-lg btn-success" 
-                                type="submit" 
-                                value="JOIN" 
+                                type="button"  // submit에서 button으로 변경
+                                value="JOIN to Talker" 
+                                onClick={joinSession}
+                                style={{ marginRight: '10px' }}
+                            />
+                            <input 
+                                className="btn btn-lg btn-success" 
+                                type="button"  // submit에서 button으로 변경
+                                value="JOIN to Watcher" 
+                                onClick={joinSession}
                             />
                         </p>
                     </form>
@@ -325,41 +296,83 @@ function App() {
                         onClick={leaveSession}
                         value="Leave session"
                     />
-                    <input
-                        className="btn btn-large btn-success"
-                        type="button"
-                        id="buttonSwitchCamera"
-                        onClick={switchCamera}
-                        value="Switch Camera"
-                    />
+                    {participantMode === 'talker' && (
+                        <input
+                            className="btn btn-large btn-success"
+                            type="button"
+                            id="buttonSwitchCamera"
+                            onClick={switchCamera}
+                            value="Switch Camera"
+                        />
+                    )}
                 </div>
 
-                <div id="video-container" className="row">
-                    {/* 내 비디오 */}
-                    {publisher && (
-                        <div className="stream-container col-md-6">
-                            <div className="streamComponent">
-                                <div className="participant-name">
-                                    <span>나</span>
+                <div id="video-container" className="col-12">
+                    {/* Talker 섹션 */}
+                    <div className="row mb-3">
+                        {/* 내가 Talker인 경우 표시 */}
+                        {publisher && participantMode === 'talker' && (
+                            <div className="col-md-6">
+                                <div className="talker-video-container">
+                                    <div className="participant-name">
+                                        <span>{myUserName} (발표자)</span>
+                                    </div>
+                                    <UserVideoComponent streamManager={publisher} />
                                 </div>
-                                <UserVideoComponent streamManager={publisher} />
                             </div>
-                        </div>
-                    )}
-                    
-                    {/* 상대방 비디오 */}
-                    {subscribers.map((subscriber, i) => (
-                        <div className="stream-container col-md-6" key={i}>
-                            <div className="streamComponent">
-                                <div className="participant-name">
-                                    <span>
-                                        {JSON.parse(subscriber.stream.connection.data).clientData}
-                                    </span>
+                        )}
+                        
+                        {/* 다른 Talker들 표시 */}
+                        {subscribers
+                            .filter(subscriber => getSubscriberType(subscriber) === 'talker')
+                            .map((subscriber, i) => {
+                                const subscriberData = JSON.parse(subscriber.stream.connection.data);
+                                const subscriberName = subscriberData.clientData.split('-')[0];
+                                return (
+                                    <div className="col-md-6" key={i}>
+                                        <div className="talker-video-container">
+                                            <div className="participant-name">
+                                                <span>{subscriberName} (발표자)</span>
+                                            </div>
+                                            <UserVideoComponent streamManager={subscriber} />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                    </div>
+
+                    {/* Watcher 섹션 */}
+                    <div className="row">
+                        {/* 내가 Watcher인 경우 표시 */}
+                        {publisher && participantMode === 'watcher' && (
+                            <div className="col-md-3">
+                                <div className="watcher-video-container">
+                                    <div className="participant-name">
+                                        <span>{myUserName} (시청자)</span>
+                                    </div>
+                                    <UserVideoComponent streamManager={publisher} />
                                 </div>
-                                <UserVideoComponent streamManager={subscriber} />
                             </div>
-                        </div>
-                    ))}
+                        )}
+                        
+                        {/* 다른 Watcher들 표시 */}
+                        {subscribers
+                            .filter(subscriber => getSubscriberType(subscriber) === 'watcher')
+                            .map((subscriber, i) => {
+                                const subscriberData = JSON.parse(subscriber.stream.connection.data);
+                                const subscriberName = subscriberData.clientData.split('-')[0];
+                                return (
+                                    <div className={`${participantMode === 'watcher' ? 'col-md-3' : 'col-md-6'}`} key={i}>
+                                        <div className={`${participantMode === 'watcher' ? 'watcher-video-container' : 'talker-video-container'}`}>
+                                            <div className="participant-name">
+                                                <span>{subscriberName} (시청자)</span>
+                                            </div>
+                                            <UserVideoComponent streamManager={subscriber} />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                    </div>
                 </div>
             </div>
         )}
