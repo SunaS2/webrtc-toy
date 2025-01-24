@@ -10,7 +10,7 @@ import axios from 'axios';
 import './App.css';
 import UserVideoComponent from './UserVideoComponent';
 
-const APPLICATION_SERVER_URL = process.env.NODE_ENV === 'production' ? '' : 'https://demos.openvidu.io/';
+const APPLICATION_SERVER_URL = process.env.NODE_ENV === 'production' ? 'https://9bda-14-46-142-196.ngrok-free.app/' : 'https://demos.openvidu.io/';
 
 function App() {
 
