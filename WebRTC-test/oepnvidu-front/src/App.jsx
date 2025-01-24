@@ -23,6 +23,7 @@ function App() {
   const [subscribers, setSubscribers] = useState([]);
   const [currentVideoDevice, setCurrentVideoDevice] = useState(null);
   const [participantMode, setParticipantMode] = useState(''); // 참가자 모드 상태 추가
+  const [speakingUsers, setSpeakingUsers] = useState(new Set());
 
   const OV = useRef(null); // useRef를 사용하여 변수에 대한 참조를 저장, 컴포넌트가 리렌더링되어도 변수에 대한 참조가 유지(값을 유지지)
 
@@ -88,6 +89,21 @@ function App() {
             insertMode: 'APPEND',
             mirror: false
         });
+
+        // 발화 감지 설정
+        if (mode === 'talker') {
+            publisher.on('publisherStartSpeaking', (event) => {
+                setSpeakingUsers(prev => new Set(prev).add(publisher.stream.connection.connectionId));
+            });
+
+            publisher.on('publisherStopSpeaking', (event) => {
+                setSpeakingUsers(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(publisher.stream.connection.connectionId);
+                    return newSet;
+                });
+            });
+        }
 
         publisher.on('streamCreated', (event) => {
             console.log('Publisher stream created:', event);
@@ -238,6 +254,23 @@ function App() {
     }
   };
 
+  // 구독자의 발화 감지 이벤트 처리
+  useEffect(() => {
+    if (session) {
+        session.on('publisherStartSpeaking', (event) => {
+            setSpeakingUsers(prev => new Set(prev).add(event.connection.connectionId));
+        });
+
+        session.on('publisherStopSpeaking', (event) => {
+            setSpeakingUsers(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(event.connection.connectionId);
+                return newSet;
+            });
+        });
+    }
+  }, [session]);
+
   return (
     <div className="container">
         {session === undefined ? (
@@ -313,9 +346,14 @@ function App() {
                         {/* 내가 Talker인 경우 표시 */}
                         {publisher && participantMode === 'talker' && (
                             <div className="col-md-6">
-                                <div className="talker-video-container">
+                                <div className={`talker-video-container ${
+                                    speakingUsers.has(publisher.stream.connection.connectionId) ? 'speaking' : ''
+                                }`}>
                                     <div className="participant-name">
                                         <span>{myUserName} (발표자)</span>
+                                        {speakingUsers.has(publisher.stream.connection.connectionId) && 
+                                            <span className="speaking-indicator">🎤</span>
+                                        }
                                     </div>
                                     <UserVideoComponent streamManager={publisher} />
                                 </div>
@@ -328,11 +366,16 @@ function App() {
                             .map((subscriber, i) => {
                                 const subscriberData = JSON.parse(subscriber.stream.connection.data);
                                 const subscriberName = subscriberData.clientData.split('-')[0];
+                                const isSubscriberSpeaking = speakingUsers.has(subscriber.stream.connection.connectionId);
+                                
                                 return (
                                     <div className="col-md-6" key={i}>
-                                        <div className="talker-video-container">
+                                        <div className={`talker-video-container ${isSubscriberSpeaking ? 'speaking' : ''}`}>
                                             <div className="participant-name">
                                                 <span>{subscriberName} (발표자)</span>
+                                                {isSubscriberSpeaking && 
+                                                    <span className="speaking-indicator">🎤</span>
+                                                }
                                             </div>
                                             <UserVideoComponent streamManager={subscriber} />
                                         </div>

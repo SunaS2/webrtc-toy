@@ -117,3 +117,33 @@
         height: 150px;
     }
 }
+
+.speaking {
+    border: 3px solid #4CAF50;
+    box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+    transition: all 0.3s ease;
+}
+
+.speaking-indicator {
+    margin-left: 8px;
+    color: #4CAF50;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.participant-name {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
